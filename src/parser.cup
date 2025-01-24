@@ -1,0 +1,161 @@
+/* Simple +/-/* expression language; parser evaluates constant expressions on the fly*/
+/**
+ *  Package and Import Specifications
+ */
+import java_cup.runtime.*;
+
+/**
+ *  Usercode Components
+ */
+parser code {:
+    // Connect this parser to a scanner!
+    Scanner s;
+    Parser(Scanner s){ this.s=s; }
+    
+    // This function makes sure that when we have function declarations
+    // in java, the arguments are all String
+    String printCorrectFuncDec(Object s1) {
+        String str = s1.toString();
+        char space = ' ';
+        String stringToBeInserted = "String";
+        String stringToBeInsertedSpace = stringToBeInserted + space;
+        String tempString = new String();
+        String stringToReturn = new String();
+        int firstTime = 0;
+
+        int i=0, j=0;
+        // Traverse the string
+            while(true) {
+                firstTime = 0;
+                stringToReturn += str.charAt(i);
+                
+                // Finding a '(' outside of the func's body means that we shoud insert "String" after
+                if(firstTime == 0 &&  str.charAt(i) == '(' && str.charAt(i+1) != ')'){
+                    stringToReturn = stringToReturn 
+                                    + stringToBeInsertedSpace ;
+                    
+                    j+= stringToBeInsertedSpace.length();
+                    firstTime++;
+                }
+
+                // Finding a ',' means that we shoud insert "String" after
+                if(str.charAt(i) == ',') {
+                    stringToReturn = stringToReturn
+                                    + stringToBeInserted ;
+                    
+                    j+= stringToBeInserted.length();
+                }
+
+                // Skip body
+                if(str.charAt(i) == '{') {
+                    while(true) {
+                        if(str.charAt(i) != '}') {
+                            i++;
+                            j++;
+                            stringToReturn += str.charAt(i);
+                        }
+                        else
+                            break;
+                    }
+                }
+
+                j++;
+                i++;
+                
+                // Exit the loop
+                if(i >= str.length())
+                    break;
+            }
+
+        return stringToReturn;
+    }
+:}
+
+/* define how to connect to the scanner! */
+scan with {: return s.next_token(); :};
+
+/**
+ *  Symbol Lists
+ */
+
+/* Terminals (tokens returned by the scanner). */
+terminal            IF, ELSE, PREFIX, REVERSE, COMMA, RBRAC, CONCAT, LPAREN, RPAREN, LBRAC;
+terminal String     STRING_LITERAL, IDENTIFIER;
+
+/*  Non terminals */
+non terminal            program, expr, func_declar, args, func_declar_list, expr_list, func_head, if_else, cond, reverse;
+
+/**
+ *  Precedence Declarations
+ */
+precedence left IF;
+precedence left CONCAT;
+precedence left REVERSE;
+precedence left IDENTIFIER;
+precedence left STRING_LITERAL;
+
+/**
+ *  The Grammar Rules
+ */
+
+program ::=  func_declar_list:r1 expr_list:r2                       {:  String retStr = printCorrectFuncDec(r1);
+                                                                        System.out.println("\n-------------------------------------------\n");
+                                                                        System.out.println("public class Main {");
+                                                                        System.out.println("\tpublic static void main(String[] args) {");
+                                                                        System.out.printf("%s\n", r2);
+                                                                        System.out.println("\t}");
+                                                                        System.out.printf("%s\n", retStr);
+                                                                        System.out.println("}");
+                                                                    :}
+         |  expr_list:r2                                            {:
+                                                                        System.out.println("\n-------------------------------------------\n");
+                                                                        System.out.println("public class Main {");
+                                                                        System.out.println("\tpublic static void main(String[] args) {");
+                                                                        System.out.printf("%s\n", r2);
+                                                                        System.out.println("\t}");
+                                                                        System.out.println("}"); 
+                                                                    :}
+         |                                                          {: 
+                                                                        System.out.println("\n-------------------------------------------\n");
+                                                                        System.out.println("public class Main {");
+                                                                        System.out.println("\tpublic static void main(String[] args) {");
+                                                                        System.out.println("\t}");
+                                                                        System.out.println("}");
+                                                                    :}
+         ;
+
+func_declar_list ::= func_declar_list:r1 func_declar:r2             {: RESULT = String.format("%s\n%s", r1, r2); :} 
+                   | func_declar:r1                                 {: RESULT = String.format("%s", r1); :}
+                   ;
+
+func_declar ::= func_head:fh LBRAC expr:expr RBRAC                  {: RESULT = String.format("\tpublic static String %s {\n\t\treturn %s;\n\t}", fh, expr); :}
+              ;
+
+func_head ::= IDENTIFIER:id LPAREN args:args RPAREN                 {: RESULT = String.format("%s(%s)", id, args); :}
+            ;
+
+args ::= args:args COMMA expr:e                                     {: RESULT = String.format("%s , %s", args, e); :}
+        | expr:e                                                    {: RESULT = String.format("%s", e); :}
+        |                                                           {: RESULT = String.format(""); :}
+        ;
+
+expr_list ::=  expr:expr expr_list:exprs                            {: RESULT = String.format("\t\tSystem.out.println(%s);\n%s",expr, exprs); :}
+            | expr:expr                                             {: RESULT = String.format("\t\tSystem.out.println(%s);", expr); :}
+            ;
+
+expr ::= STRING_LITERAL:s                                           {: RESULT = String.format("\"%s\"", s); :}
+       | IDENTIFIER:id                                              {: RESULT = String.format("%s", id); :}
+       | func_head:fh                                               {: RESULT = String.format("%s", fh); :}
+       | expr:e1 CONCAT expr:e2                                     {: RESULT = String.format("%s + %s", e1, e2); :}
+       | if_else:r                                                  {: RESULT = String.format("%s", r); :}
+       | reverse:r                                                  {: RESULT = String.format("%s", r); :}
+       ;
+
+if_else ::= IF LPAREN cond:cond RPAREN expr:expr1 ELSE expr:expr2   {: RESULT = String.format("((%s) ? (%s) : (%s))", cond, expr1, expr2); :}
+          ;
+
+cond ::= expr:expr1 PREFIX expr:expr2                               {: RESULT = String.format("%s.startsWith(%s)", expr2, expr1); :}
+       ;
+
+reverse ::= REVERSE expr:expr                                       {: RESULT = String.format("(new StringBuilder(%s).reverse().toString())", expr); :}
+          ;
